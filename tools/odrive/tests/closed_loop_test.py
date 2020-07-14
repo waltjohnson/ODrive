@@ -39,14 +39,14 @@ class TestClosedLoopControlBase():
         axis_ctx.handle.motor.config.pre_calibrated = True
 
         # Set calibration settings
-        axis_ctx.handle.motor.config.direction = 0
+        axis_ctx.handle.encoder.config.direction = 0
         axis_ctx.handle.encoder.config.use_index = False
         axis_ctx.handle.encoder.config.calib_scan_omega = 12.566 # 2 electrical revolutions per second
         axis_ctx.handle.encoder.config.calib_scan_distance = 50.265 # 8 revolutions
         axis_ctx.handle.encoder.config.bandwidth = 1000
 
 
-        axis_ctx.handle.clear_errors()
+        axis_ctx.parent.handle.clear_errors()
 
         logger.debug('Calibrating encoder offset...')
         request_state(axis_ctx, AXIS_STATE_ENCODER_OFFSET_CALIBRATION)
@@ -231,7 +231,7 @@ class TestVelLimitInTorqueControl(TestClosedLoopControlBase):
 
             axis_ctx.handle.controller.config.vel_gain /= 10 # reduce the slope to make it easier to see what's going on
             vel_gain = axis_ctx.handle.controller.config.vel_gain
-            direction = axis_ctx.handle.motor.config.direction
+            direction = axis_ctx.handle.encoder.config.direction
             logger.debug(f'vel gain is {vel_gain}')
 
             axis_ctx.handle.controller.config.vel_limit = max_vel

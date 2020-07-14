@@ -50,11 +50,6 @@ class TestEncoderBase():
         test_assert_eq(slope, true_cps, accuracy=0.005)
         test_curve_fit(data[:,(0,2)], fitted_curve, max_mean_err = true_cpr * 0.02, inlier_range = true_cpr * 0.02, max_outliers = len(data[:,0]) * 0.02)
 
-        # encoder.phase
-        slope, offset, fitted_curve = fit_sawtooth(data[:,(0,3)], pi if reverse else -pi, -pi if reverse else pi, sigma=5)
-        test_assert_eq(slope / 7, 2*pi*true_rps, accuracy=0.05)
-        test_curve_fit(data[:,(0,3)], fitted_curve, max_mean_err = true_cpr * 0.02, inlier_range = true_cpr * 0.02, max_outliers = len(data[:,0]) * 0.02)
-
         # encoder.pos_estimate
         slope, offset, fitted_curve = fit_line(data[:,(0,4)])
         test_assert_eq(slope, true_cps, accuracy=0.005)

@@ -17,9 +17,6 @@ osSemaphoreId sem_usb_rx;
 osSemaphoreId sem_usb_tx;
 osSemaphoreId sem_can;
 
-osThreadId usb_irq_thread;
-const uint32_t stack_size_usb_irq_thread = 2048; // Bytes
-
 #if defined(STM32F405xx)
 // Place FreeRTOS heap in core coupled memory for better performance
 __attribute__((section(".ccmram")))
@@ -150,28 +147,25 @@ void ODrive::enter_dfu_mode() {
     }
 }
 
-static void usb_deferred_interrupt_thread(void * ctx) {
-    (void) ctx; // unused parameter
-
-    for (;;) {
-        // Wait for signalling from USB interrupt (OTG_FS_IRQHandler)
-        osStatus semaphore_status = osSemaphoreWait(sem_usb_irq, osWaitForever);
-        if (semaphore_status == osOK) {
-            // We have a new incoming USB transmission: handle it
-            HAL_PCD_IRQHandler(&usb_pcd_handle);
-            // Let the irq (OTG_FS_IRQHandler) fire again.
-            HAL_NVIC_EnableIRQ((usb_pcd_handle.Instance == USB_OTG_FS) ? OTG_FS_IRQn : OTG_HS_IRQn);
-        }
+void ODrive::clear_errors() {
+    for (auto& axis: axes) {
+        axis.motor_.error_ = Motor::ERROR_NONE;
+        axis.controller_.error_ = Controller::ERROR_NONE;
+        axis.sensorless_estimator_.error_ = SensorlessEstimator::ERROR_NONE;
+        axis.encoder_.error_ = Encoder::ERROR_NONE;
+        axis.encoder_.spi_error_rate_ = 0.0f;
+        axis.error_ = Axis::ERROR_NONE;
     }
+    error_ = ERROR_NONE;
 }
 
 extern "C" {
 
 void vApplicationStackOverflowHook(xTaskHandle *pxTask, signed portCHAR *pcTaskName) {
-    for(auto& axis : axes){
-        safety_critical_disarm_motor_pwm(axis.motor_);
+    for(auto& axis: axes){
+        axis.motor_.disarm();
     }
-        safety_critical_disarm_brake_resistor();
+    safety_critical_disarm_brake_resistor();
     for (;;); // TODO: safe action
 }
 
@@ -184,7 +178,6 @@ void vApplicationIdleHook(void) {
         odrv.system_stats_.min_stack_space_axis = *std::min_element(std::begin(min_stack_space), std::end(min_stack_space));
         odrv.system_stats_.min_stack_space_usb = uxTaskGetStackHighWaterMark(usb_thread) * sizeof(StackType_t);
         odrv.system_stats_.min_stack_space_uart = uxTaskGetStackHighWaterMark(uart_thread) * sizeof(StackType_t);
-        odrv.system_stats_.min_stack_space_usb_irq = uxTaskGetStackHighWaterMark(usb_irq_thread) * sizeof(StackType_t);
         odrv.system_stats_.min_stack_space_startup = uxTaskGetStackHighWaterMark(defaultTaskHandle) * sizeof(StackType_t);
         odrv.system_stats_.min_stack_space_can = uxTaskGetStackHighWaterMark(odCAN->thread_id_) * sizeof(StackType_t);
 
@@ -192,12 +185,106 @@ void vApplicationIdleHook(void) {
         odrv.system_stats_.stack_usage_axis = axes[0].stack_size_ - odrv.system_stats_.min_stack_space_axis;
         odrv.system_stats_.stack_usage_usb = stack_size_usb_thread - odrv.system_stats_.min_stack_space_usb;
         odrv.system_stats_.stack_usage_uart = stack_size_uart_thread - odrv.system_stats_.min_stack_space_uart;
-        odrv.system_stats_.stack_usage_usb_irq = stack_size_usb_irq_thread - odrv.system_stats_.min_stack_space_usb_irq;
         odrv.system_stats_.stack_usage_startup = stack_size_default_task - odrv.system_stats_.min_stack_space_startup;
         odrv.system_stats_.stack_usage_can = odCAN->stack_size_ - odrv.system_stats_.min_stack_space_can;
     }
 }
 
+}
+
+/**
+ * @brief Runs system-level checks that need to be as real-time as possible.
+ * 
+ * This function is called after every current measurement of every motor.
+ * It should finish as quickly as possible.
+ */
+void ODrive::do_fast_checks() {
+    if (!(vbus_voltage >= config_.dc_bus_undervoltage_trip_level))
+        disarm_with_error(ERROR_DC_BUS_UNDER_VOLTAGE);
+    if (!(vbus_voltage <= config_.dc_bus_overvoltage_trip_level))
+        disarm_with_error(ERROR_DC_BUS_OVER_VOLTAGE);
+}
+
+/**
+ * @brief Floats all power phases on the system (all motors and brake resistors).
+ *
+ * This should be called if a system level exception ocurred that makes it
+ * unsafe to run power through the system in general.
+ */
+void ODrive::disarm_with_error(Error error) {
+    CRITICAL_SECTION() {
+        for (auto& axis: axes) {
+            axis.motor_.disarm_with_error(Motor::ERROR_SYSTEM_LEVEL);
+        }
+        safety_critical_disarm_brake_resistor();
+        error_ |= error;
+    }
+}
+
+/**
+ * @brief Runs the periodic control loop.
+ * 
+ * This function is executed in a low priority interrupt context and is allowed
+ * to call CMSIS functions.
+ * 
+ * @param update_cnt: The true count of update events (wrapping around at 16
+ *        bits). This is used for timestamp calculation in the face of
+ *        potentially missed timer update interrupts. Therefore this counter
+ *        must not rely on any interrupts.
+ */
+void ODrive::control_loop_cb(uint16_t update_cnt) {
+    last_update_timestamp_ += (uint32_t)(uint16_t)(update_cnt - last_update_cnt_) * CONTROL_TIMER_PERIOD_TICKS;
+    uint32_t timestamp = last_update_timestamp_;
+    
+    sampling_start_timestamp_ = TIM13->CNT;
+
+    // Normally we try to catch every update interrupt. If we fail to do so
+    // the user should know.
+    if (update_cnt != (uint16_t)(last_update_cnt_ + 1)) {
+        error_ |= ERROR_CONTROL_ITERATION_MISSED;
+        // TODO: disarm motors on system error
+    }
+    last_update_cnt_ = update_cnt;
+
+    // First run actions that should have as little jitter as possible
+    for (auto& axis: axes) {
+        axis.encoder_.sample_now();
+    }
+
+    sampling_end_timestamp_ = TIM13->CNT;
+
+    // TODO: use a configurable component list for most of the following things
+
+    uart_poll();
+    odrv.oscilloscope_.update();
+
+    for (auto& axis: axes) {
+        // look for errors at axis level and also all subcomponents
+        bool checks_ok = axis.do_checks(timestamp);
+
+        // make sure the watchdog is being fed. 
+        bool watchdog_ok = axis.watchdog_check();
+
+        if (!checks_ok || !watchdog_ok) {
+            axis.motor_.disarm();
+        }
+    }
+
+    for (auto& axis: axes) {
+        // Sub-components should use set_error which will propegate to this error_
+        for (ThermistorCurrentLimiter* thermistor : axis.thermistors_) {
+            thermistor->update();
+        }
+        axis.encoder_.update();
+        axis.sensorless_estimator_.update();
+        axis.min_endstop_.update();
+        axis.max_endstop_.update();
+        odCAN->send_heartbeat(&axis);
+        axis.controller_.update();
+        axis.open_loop_controller_.update(timestamp);
+        axis.async_estimator_.update(timestamp);
+        axis.motor_.current_control_.update(timestamp); // uses the output of controller_ or open_loop_contoller_ and encoder_ or sensorless_estimator_ or async_estimator_
+    }
 }
 
 
@@ -259,29 +346,19 @@ static void rtos_main(void*) {
     // must happen after communication is initialized
     pwm0_input.init();
 
-    // Set up hardware for all components
-    for (size_t i = 0; i < AXIS_COUNT; ++i) {
-        if (!axes[i].setup()) {
-            for (;;) {
-                osDelay(10); // TODO: proper error handling
-            }
-        }
+    // Try to initialized gate drivers for fault-free startup.
+    // If this does not succeed, a fault will be raised and the idle loop will
+    // periodically attempt to reinit the gate driver.
+    for(auto& axis: axes){
+        axis.motor_.setup();
     }
 
-    for(auto& axis : axes){
+    for(auto& axis: axes){
         axis.encoder_.setup();
     }
 
     // Start PWM and enable adc interrupts/callbacks
     start_adc_pwm();
-
-    // This delay serves two purposes:
-    //  - Let the current sense calibration converge (the current
-    //    sense interrupts are firing in background by now)
-    //  - Allow a user to interrupt the code, e.g. by flashing a new code,
-    //    before it does anything crazy
-    // TODO make timing a function of calibration filter tau
-    osDelay(1500);
 
     // Start state machine threads. Each thread will go through various calibration
     // procedures and then run the actual controller loops.
@@ -523,11 +600,6 @@ extern "C" int main(void) {
     osSemaphoreDef(sem_can);
     sem_can = osSemaphoreCreate(osSemaphore(sem_can), 1);
     osSemaphoreWait(sem_can, 0);
-
-    // Start USB interrupt handler thread
-    osThreadDef(task_usb_pump, usb_deferred_interrupt_thread, osPriorityAboveNormal, 0, stack_size_usb_irq_thread / sizeof(StackType_t));
-    usb_irq_thread = osThreadCreate(osThread(task_usb_pump), NULL);
-
 
     // Construct all objects.
     odCAN = new ODriveCAN(can_config, &hcan1);
