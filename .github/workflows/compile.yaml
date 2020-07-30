@@ -5,7 +5,7 @@ on:
     branches: [master, devel]
     tags: ['fw-v*']
   push:
-    branches: [master, devel]
+    branches: [master, devel, test_win_build]
     tags: ['fw-v*']
 
 jobs:
