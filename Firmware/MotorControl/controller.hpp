@@ -99,8 +99,7 @@ public:
     bool anticogging_valid_ = false;
 
     // Outputs
-    float Id_setpoint_ = 0.0f; // this is currently also an input (TODO: change)
-    float Iq_setpoint_ = NAN;
+    float torque_output_ = NAN;
 
     // custom setters
     void set_input_pos(float value) { input_pos_ = value; input_pos_updated(); }

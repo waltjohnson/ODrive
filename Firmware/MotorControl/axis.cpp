@@ -205,22 +205,31 @@ bool Axis::run_lockin_spin(const LockinConfig_t &lockin_config) {
         // Reset state variables
         open_loop_controller_.Id_setpoint_ = NAN;
         open_loop_controller_.Iq_setpoint_ = NAN;
+        open_loop_controller_.Vd_setpoint_ = NAN;
+        open_loop_controller_.Vq_setpoint_ = NAN;
         open_loop_controller_.phase_ = 0.0f;
         open_loop_controller_.phase_vel_ = NAN;
 
         open_loop_controller_.max_current_ramp_ = lockin_config.current / lockin_config.ramp_time;
+        open_loop_controller_.max_voltage_ramp_ = lockin_config.current / lockin_config.ramp_time;
         open_loop_controller_.max_phase_vel_ramp_ = lockin_config.accel;
-        open_loop_controller_.target_current_ = lockin_config.current;
+        open_loop_controller_.target_current_ = motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL ? lockin_config.current : 0.0f;
+        open_loop_controller_.target_voltage_ = motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL ? 0.0f : lockin_config.current;
         open_loop_controller_.target_vel_ = lockin_config.vel;
         open_loop_controller_.total_distance_ = 0.0f;
 
         motor_.current_control_.enable_current_control_src_ = motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL;
         motor_.current_control_.Id_setpoint_src_ = &open_loop_controller_.Id_setpoint_;
         motor_.current_control_.Iq_setpoint_src_ = &open_loop_controller_.Iq_setpoint_;
-        motor_.current_control_.Vd_setpoint_src_ = &open_loop_controller_.Id_setpoint_;
-        motor_.current_control_.Vq_setpoint_src_ = &open_loop_controller_.Iq_setpoint_;
-        motor_.current_control_.phase_src_ = &open_loop_controller_.phase_;
-        motor_.current_control_.phase_vel_src_ = &open_loop_controller_.phase_vel_;
+        motor_.current_control_.Vd_setpoint_src_ = &open_loop_controller_.Vd_setpoint_;
+        motor_.current_control_.Vq_setpoint_src_ = &open_loop_controller_.Vq_setpoint_;
+        motor_.current_control_.phase_src_
+            = async_estimator_.rotor_phase_src_
+            = &open_loop_controller_.phase_;
+        motor_.phase_vel_src_
+            = motor_.current_control_.phase_vel_src_
+            = async_estimator_.rotor_phase_vel_src_
+            = &open_loop_controller_.phase_vel_;
     }
     wait_for_control_iteration();
 
@@ -313,11 +322,13 @@ bool Axis::start_closed_loop_control() {
         // Avoid integrator windup issues
         controller_.vel_integrator_torque_ = 0.0f;
 
+        motor_.torque_setpoint_src_ = &controller_.torque_output_;
+
         motor_.current_control_.enable_current_control_src_ = motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL;
-        motor_.current_control_.Id_setpoint_src_ = &controller_.Id_setpoint_;
-        motor_.current_control_.Iq_setpoint_src_ = &controller_.Iq_setpoint_;
-        motor_.current_control_.Vd_setpoint_src_ = &controller_.Id_setpoint_;
-        motor_.current_control_.Vq_setpoint_src_ = &controller_.Iq_setpoint_;
+        motor_.current_control_.Id_setpoint_src_ = &motor_.Id_setpoint_;
+        motor_.current_control_.Iq_setpoint_src_ = &motor_.Iq_setpoint_;
+        motor_.current_control_.Vd_setpoint_src_ = &motor_.Vd_setpoint_;
+        motor_.current_control_.Vq_setpoint_src_ = &motor_.Vq_setpoint_;
         motor_.current_control_.phase_src_ = sensorless_mode ? &sensorless_estimator_.phase_ : &encoder_.phase_;
         motor_.current_control_.phase_vel_src_ = sensorless_mode ? &sensorless_estimator_.vel_estimate_ : &encoder_.phase_vel_;
     }

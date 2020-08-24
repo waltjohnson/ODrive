@@ -218,22 +218,32 @@ bool Encoder::run_offset_calibration() {
         // Reset state variables
         axis_->open_loop_controller_.Id_setpoint_ = NAN;
         axis_->open_loop_controller_.Iq_setpoint_ = NAN;
+        axis_->open_loop_controller_.Vd_setpoint_ = NAN;
+        axis_->open_loop_controller_.Vq_setpoint_ = NAN;
         axis_->open_loop_controller_.phase_ = 0.0f;
         axis_->open_loop_controller_.phase_vel_ = NAN;
 
-        axis_->open_loop_controller_.max_current_ramp_ = axis_->motor_.config_.calibration_current / start_lock_duration * 2.0f;
+        float max_current_ramp = axis_->motor_.config_.calibration_current / start_lock_duration * 2.0f;
+        axis_->open_loop_controller_.max_current_ramp_ = max_current_ramp;
+        axis_->open_loop_controller_.max_voltage_ramp_ = max_current_ramp;
         axis_->open_loop_controller_.max_phase_vel_ramp_ = INFINITY;
-        axis_->open_loop_controller_.target_current_ = axis_->motor_.config_.calibration_current;
+        axis_->open_loop_controller_.target_current_ = axis_->motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL ? axis_->motor_.config_.calibration_current : 0.0f;
+        axis_->open_loop_controller_.target_voltage_ = axis_->motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL ? 0.0f : axis_->motor_.config_.calibration_current;
         axis_->open_loop_controller_.target_vel_ = 0.0f;
         axis_->open_loop_controller_.total_distance_ = 0.0f;
 
         axis_->motor_.current_control_.enable_current_control_src_ = (axis_->motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL);
         axis_->motor_.current_control_.Id_setpoint_src_ = &axis_->open_loop_controller_.Id_setpoint_;
         axis_->motor_.current_control_.Iq_setpoint_src_ = &axis_->open_loop_controller_.Iq_setpoint_;
-        axis_->motor_.current_control_.Vd_setpoint_src_ = &axis_->open_loop_controller_.Id_setpoint_;
-        axis_->motor_.current_control_.Vq_setpoint_src_ = &axis_->open_loop_controller_.Iq_setpoint_;
-        axis_->motor_.current_control_.phase_src_ = &axis_->open_loop_controller_.phase_;
-        axis_->motor_.current_control_.phase_vel_src_ = &axis_->open_loop_controller_.phase_vel_;
+        axis_->motor_.current_control_.Vd_setpoint_src_ = &axis_->open_loop_controller_.Vd_setpoint_;
+        axis_->motor_.current_control_.Vq_setpoint_src_ = &axis_->open_loop_controller_.Vq_setpoint_;
+        axis_->motor_.current_control_.phase_src_
+            = axis_->async_estimator_.rotor_phase_src_
+            = &axis_->open_loop_controller_.phase_;
+        axis_->motor_.phase_vel_src_
+            = axis_->motor_.current_control_.phase_vel_src_
+            = axis_->async_estimator_.rotor_phase_vel_src_
+            = &axis_->open_loop_controller_.phase_vel_;
     }
     axis_->wait_for_control_iteration();
 

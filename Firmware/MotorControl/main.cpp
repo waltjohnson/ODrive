@@ -222,36 +222,45 @@ void ODrive::disarm_with_error(Error error) {
 }
 
 /**
+ * @brief Runs the periodic sampling tasks
+ * 
+ * All components that need to sample real-world data should do it in this
+ * function as it runs on a high interrupt priority and provides lowest possible
+ * timing jitter.
+ * 
+ * All function called from this function should adhere to the following rules:
+ *  - Try to use the same number of CPU cycles in every iteration.
+ *    (reason: Tasks that run later in the function still want lowest possible timing jitter)
+ *  - Use as few cycles as possible.
+ *    (reason: The interrupt blocks other important interrupts (TODO: which ones?))
+ *  - Not call any FreeRTOS functions.
+ *    (reason: The interrupt priority is higher than the max allowed priority for syscalls)
+ * 
+ * Time consuming and undeterministic logic/arithmetic should live on
+ * control_loop_cb() instead.
+ */
+void ODrive::sampling_cb() {
+    for (auto& axis: axes) {
+        axis.encoder_.sample_now();
+    }
+}
+
+/**
  * @brief Runs the periodic control loop.
  * 
  * This function is executed in a low priority interrupt context and is allowed
  * to call CMSIS functions.
+ * 
+ * Yet it runs at a higher priority than communication workloads.
  * 
  * @param update_cnt: The true count of update events (wrapping around at 16
  *        bits). This is used for timestamp calculation in the face of
  *        potentially missed timer update interrupts. Therefore this counter
  *        must not rely on any interrupts.
  */
-void ODrive::control_loop_cb(uint16_t update_cnt) {
-    last_update_timestamp_ += (uint32_t)(uint16_t)(update_cnt - last_update_cnt_) * CONTROL_TIMER_PERIOD_TICKS;
-    uint32_t timestamp = last_update_timestamp_;
-    
-    sampling_start_timestamp_ = TIM13->CNT;
-
-    // Normally we try to catch every update interrupt. If we fail to do so
-    // the user should know.
-    if (update_cnt != (uint16_t)(last_update_cnt_ + 1)) {
-        error_ |= ERROR_CONTROL_ITERATION_MISSED;
-        // TODO: disarm motors on system error
-    }
-    last_update_cnt_ = update_cnt;
-
-    // First run actions that should have as little jitter as possible
-    for (auto& axis: axes) {
-        axis.encoder_.sample_now();
-    }
-
-    sampling_end_timestamp_ = TIM13->CNT;
+void ODrive::control_loop_cb(uint32_t timestamp) {
+    last_update_timestamp_ = timestamp;
+    last_update_cnt_++;
 
     // TODO: use a configurable component list for most of the following things
 
@@ -280,9 +289,10 @@ void ODrive::control_loop_cb(uint16_t update_cnt) {
         axis.min_endstop_.update();
         axis.max_endstop_.update();
         odCAN->send_heartbeat(&axis);
-        axis.controller_.update();
+        axis.controller_.update(); // uses position and velocity from encoder
         axis.open_loop_controller_.update(timestamp);
         axis.async_estimator_.update(timestamp);
+        axis.motor_.update(); // uses torque from controller and phase_vel from encoder
         axis.motor_.current_control_.update(timestamp); // uses the output of controller_ or open_loop_contoller_ and encoder_ or sensorless_estimator_ or async_estimator_
     }
 }

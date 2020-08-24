@@ -137,6 +137,13 @@ public:
     float effective_current_lim_ = 10.0f; // [A]
     float max_allowed_current_ = 0.0f; // [A] set in setup()
     float max_dc_calib_ = 0.0f; // [A] set in setup()
+
+    float* torque_setpoint_src_ = nullptr; // Usually points to the Controller object's output
+    float* phase_vel_src_ = nullptr; // Usually points to the Encoder object's output
+    float Vd_setpoint_ = NAN; // fed to the FOC
+    float Vq_setpoint_ = NAN; // fed to the FOC
+    float Id_setpoint_ = NAN; // fed to the FOC
+    float Iq_setpoint_ = NAN; // fed to the FOC
     
     PhaseControlLaw<3>* control_law_;
 };

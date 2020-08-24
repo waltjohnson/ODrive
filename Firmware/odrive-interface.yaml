@@ -99,10 +99,6 @@ interfaces:
         doc: 0 for official releases, 1 otherwise
       brake_resistor_armed: readonly bool
       brake_resistor_saturated: bool
-      sampling_start_timestamp:
-        type: uint32
-      sampling_end_timestamp:
-        type: uint32
       system_stats:
         c_is_class: False
         attributes:

@@ -167,7 +167,8 @@ public:
     }
 
     void do_fast_checks();
-    void control_loop_cb(uint16_t update_cnt);
+    void sampling_cb();
+    void control_loop_cb(uint32_t timestamp);
 
     Axis& get_axis(int num) { return axes[num]; }
     ODriveCAN& get_can() { return *odCAN; }
@@ -213,9 +214,6 @@ public:
 
     bool& brake_resistor_armed_ = ::brake_resistor_armed; // TODO: make this the actual variable
     bool& brake_resistor_saturated_ = ::brake_resistor_saturated; // TODO: make this the actual variable
-    
-    uint32_t sampling_start_timestamp_ = 0;
-    uint32_t sampling_end_timestamp_ = 0;
 
     SystemStats_t system_stats_;
     Oscilloscope oscilloscope_{

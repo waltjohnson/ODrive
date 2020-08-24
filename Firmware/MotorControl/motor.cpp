@@ -457,6 +457,7 @@ bool Motor::run_calibration() {
 
 void Motor::update() {
     float torque = torque_setpoint_src_ ? *torque_setpoint_src_ : NAN;
+    float phase_vel = phase_vel_src_ ? *phase_vel_src_ : NAN;
 
     // Reset output just in case the controller fails for any reason
     Iq_setpoint_ = NAN;

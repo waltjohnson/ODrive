@@ -73,10 +73,11 @@ def dump_errors(odrv, clear=False, printfunc = print):
     def dump_errors_for_module(indent, name, obj, path, errorcodes):
         prefix = indent + name.strip('0123456789') + ": "
         for elem in path.split('.'):
-            if not hasattr(obj, name):
-                print(prefix + _VT100Colors['yellow'] + "not found" + _VT100Colors['default'])
+            if not hasattr(obj, elem):
+                printfunc(prefix + _VT100Colors['yellow'] + "not found" + _VT100Colors['default'])
+                return
             parent = obj
-            obj = getattr(obj, name)
+            obj = getattr(obj, elem)
         if obj != 0:
             printfunc(indent + name + ": " + _VT100Colors['red'] + "Error(s):" + _VT100Colors['default'])
             for bit in range(64):
@@ -88,7 +89,7 @@ def dump_errors(odrv, clear=False, printfunc = print):
             printfunc(indent + name + ": " + _VT100Colors['green'] + "no error" + _VT100Colors['default'])
 
     system_error_codes = {v: k for k, v in odrive.enums.__dict__ .items() if k.startswith("ODRIVE_ERROR_")}
-    dump_errors_for_module("", "system", odrv, system_error_codes)
+    dump_errors_for_module("", "system", odrv, 'error', system_error_codes)
 
     for name, axis in axes:
         printfunc(name)
