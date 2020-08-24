@@ -46,6 +46,13 @@ public:
         float current_control_bandwidth = 1000.0f;  // [rad/s]
         float inverter_temp_limit_lower = 100;
         float inverter_temp_limit_upper = 120;
+
+        float acim_gain_min_flux = 10; // [A]
+        float acim_autoflux_min_Id = 10; // [A]
+        bool acim_autoflux_enable = false;
+        float acim_autoflux_attack_gain = 10.0f;
+        float acim_autoflux_decay_gain = 1.0f;
+        
         bool R_wL_FF_enable = false; // Enable feedforwards for R*I and w*L*I terms
         bool bEMF_FF_enable = false; // Enable feedforward for bEMF
 
@@ -88,6 +95,7 @@ public:
     bool measure_phase_resistance(float test_current, float max_voltage);
     bool measure_phase_inductance(float test_voltage);
     bool run_calibration();
+    void update();
     void tim_update_cb(uint32_t adc_a, uint32_t adc_b, uint32_t adc_c);
 
     // hardware config

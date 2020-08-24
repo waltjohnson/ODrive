@@ -105,8 +105,7 @@ bool Controller::update() {
     float vel_estimate = vel_estimate_src_ ? *vel_estimate_src_ : NAN;
 
     // Reset output just in case the controller fails for any reason
-    Iq_setpoint_ = NAN;
-    // Id_setpoint_ = NAN; // this doubles as a state variable so we can't reset it
+    torque_output_ = NAN;
 
     // Calib_anticogging is only true when calibration is occurring, so we can't block anticogging_pos
     float anticogging_pos = axis_->encoder_.pos_estimate_ / axis_->encoder_.getCoggingRatio();
@@ -260,7 +259,7 @@ bool Controller::update() {
     float vel_integrator_gain = config_.vel_integrator_gain;
     if (axis_->motor_.config_.motor_type == Motor::MOTOR_TYPE_ACIM) {
         float effective_flux = axis_->async_estimator_.rotor_flux_;
-        float minflux = config_.acim_gain_min_flux;
+        float minflux = axis_->motor_.config_.acim_gain_min_flux;
         if (fabsf(effective_flux) < minflux)
             effective_flux = std::copysignf(minflux, effective_flux);
         vel_gain /= effective_flux;
@@ -327,37 +326,12 @@ bool Controller::update() {
         }
     }
 
-    float id = Id_setpoint_;
-    float iq;
-
-    // Convert torque to current
-    if (axis_->motor_.config_.motor_type == Motor::MOTOR_TYPE_ACIM) {
-        iq = torque / (axis_->motor_.config_.torque_constant * fmax(axis_->async_estimator_.rotor_flux_, config_.acim_gain_min_flux));
-    } else {
-        iq = torque / axis_->motor_.config_.torque_constant;
-    }
-
-    iq *= axis_->encoder_.config_.direction;
-
-    // TODO: 2-norm vs independent clamping (current could be sqrt(2) bigger)
-    float ilim = axis_->motor_.effective_current_lim_;
-    id = std::clamp(id, -ilim, ilim);
-    iq = std::clamp(iq, -ilim, ilim);
-
-    if ((axis_->motor_.config_.motor_type == Motor::MOTOR_TYPE_ACIM) && config_.acim_autoflux_enable) {
-        float abs_iq = fabsf(iq);
-        float gain = abs_iq > id ? config_.acim_autoflux_attack_gain : config_.acim_autoflux_decay_gain;
-        id += gain * (abs_iq - id) * current_meas_period;
-        id = std::clamp(id, config_.acim_autoflux_min_Id, ilim);
-    }
-
-    Id_setpoint_ = id;
-    Iq_setpoint_ = iq;
+    torque_output_ = torque;
 
     // TODO: this is inconsistent with the other errors which are sticky.
-    // However if we make ERROR_INVALID_ESTIMATE then it will be confusing that
-    // a normal sequence of motor calibration + encoder calibration would leave
-    // the controller in an error state.
+    // However if we make ERROR_INVALID_ESTIMATE sticky then it will be
+    // confusing that a normal sequence of motor calibration + encoder
+    // calibration would leave the controller in an error state.
     error_ &= ~ERROR_INVALID_ESTIMATE;
     return true;
 }

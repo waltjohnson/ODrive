@@ -56,6 +56,8 @@ Motor::Error FieldOrientedController::on_measurement(
     Ibeta_measured_ = Ibeta;
 
     // Fetch member variables into local variables to make the optimizer's life easier.
+    float Vd = Vd_setpoint_;
+    float Vq = Vq_setpoint_;
     float Id_setpoint = Id_setpoint_;
     float Iq_setpoint = Iq_setpoint_;
     float phase = phase_;
@@ -78,8 +80,6 @@ Motor::Error FieldOrientedController::on_measurement(
     float Ierr_d = Id_setpoint - Id;
     float Ierr_q = Iq_setpoint - Iq;
 
-    float Vd;
-    float Vq;
 
     if (enable_current_control_) {
         // Check for current sense saturation
@@ -87,27 +87,9 @@ Motor::Error FieldOrientedController::on_measurement(
             return Motor::ERROR_UNKNOWN_CURRENT;
         }
 
-        // Apply PI control
-        Vd = v_current_control_integral_d_ + Ierr_d * p_gain_;
-        Vq = v_current_control_integral_q_ + Ierr_q * p_gain_;
-        
-        if (config_.R_wL_FF_enable) {
-            Vd -= phase_vel * config_.phase_inductance * Iq_setpoint;
-            Vq += phase_vel * config_.phase_inductance * Id_setpoint;
-            Vd += config_.phase_resistance * Id_setpoint;
-            Vq += config_.phase_resistance * Iq_setpoint;
-        }
-
-        if (config_.bEMF_FF_enable) {
-            Vq += phase_vel * (2.0f/3.0f) * (config_.torque_constant / config_.pole_pairs);
-        }
-
-        Vd_setpoint_ = Vd;
-        Vq_setpoint_ = Vq;
-
-    } else {
-        Vd = Vd_setpoint_;
-        Vq = Vq_setpoint_;
+        // Apply PI control (V{d,q}_setpoint act as feed-forward terms in this mode)
+        Vd += v_current_control_integral_d_ + Ierr_d * p_gain_;
+        Vq += v_current_control_integral_q_ + Ierr_q * p_gain_;
     }
 
     if (std::isnan(vbus_voltage)) {

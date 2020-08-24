@@ -455,6 +455,56 @@ bool Motor::run_calibration() {
     return true;
 }
 
+void Motor::update() {
+    float torque = torque_setpoint_src_ ? *torque_setpoint_src_ : NAN;
+
+    // Reset output just in case the controller fails for any reason
+    Iq_setpoint_ = NAN;
+    // Id_setpoint_ = NAN; // this doubles as a state variable so we can't reset it
+
+    float vd = 0.0f;
+    float vq = 0.0f;
+    float id = Id_setpoint_;
+    float iq;
+
+    // Convert torque to current
+    if (axis_->motor_.config_.motor_type == Motor::MOTOR_TYPE_ACIM) {
+        iq = torque / (axis_->motor_.config_.torque_constant * fmax(axis_->async_estimator_.rotor_flux_, config_.acim_gain_min_flux));
+    } else {
+        iq = torque / axis_->motor_.config_.torque_constant;
+    }
+
+    iq *= axis_->encoder_.config_.direction;
+
+    // TODO: 2-norm vs independent clamping (current could be sqrt(2) bigger)
+    float ilim = axis_->motor_.effective_current_lim_;
+    id = std::clamp(id, -ilim, ilim);
+    iq = std::clamp(iq, -ilim, ilim);
+
+    if ((axis_->motor_.config_.motor_type == Motor::MOTOR_TYPE_ACIM) && config_.acim_autoflux_enable) {
+        float abs_iq = fabsf(iq);
+        float gain = abs_iq > id ? config_.acim_autoflux_attack_gain : config_.acim_autoflux_decay_gain;
+        id += gain * (abs_iq - id) * current_meas_period;
+        id = std::clamp(id, config_.acim_autoflux_min_Id, ilim);
+    }
+
+    if (config_.R_wL_FF_enable) {
+        vd -= phase_vel * config_.phase_inductance * iq;
+        vq += phase_vel * config_.phase_inductance * id;
+        vd += config_.phase_resistance * id;
+        vq += config_.phase_resistance * iq;
+    }
+
+    if (config_.bEMF_FF_enable) {
+        vq += phase_vel * (2.0f/3.0f) * (config_.torque_constant / config_.pole_pairs);
+    }
+
+    Vd_setpoint_ = vd;
+    Vq_setpoint_ = vq;
+    Id_setpoint_ = id;
+    Iq_setpoint_ = iq;
+}
+
 
 /**
  * @brief Called when the underlying hardware timer triggers an update event.

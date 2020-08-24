@@ -690,6 +690,11 @@ interfaces:
           inverter_temp_limit_upper: float32
           requested_current_range: float32
           current_control_bandwidth: {type: float32, c_setter: set_current_control_bandwidth}
+          acim_gain_min_flux: float32
+          acim_autoflux_min_Id: float32
+          acim_autoflux_enable: bool
+          acim_autoflux_attack_gain: float32
+          acim_autoflux_decay_gain: float32
           R_wL_FF_enable: bool
           bEMF_FF_enable: bool
           I_bus_hard_min:
@@ -841,11 +846,6 @@ interfaces:
               calib_vel_threshold: float32
               cogging_ratio: readonly float32
               anticogging_enabled: bool
-          acim_gain_min_flux: float32
-          acim_autoflux_min_Id: float32
-          acim_autoflux_enable: bool
-          acim_autoflux_attack_gain: float32
-          acim_autoflux_decay_gain: float32
     functions:
       move_incremental:
         doc: Moves the axes' goal point by a specified increment.

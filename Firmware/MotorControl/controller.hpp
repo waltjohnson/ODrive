@@ -40,12 +40,6 @@ public:
         float mirror_ratio = 1.0f;
         uint8_t load_encoder_axis = -1;  // default depends on Axis number and is set in load_configuration(). Set to -1 to select sensorless estimator.
 
-        float acim_gain_min_flux = 10; // [A]
-        float acim_autoflux_min_Id = 10; // [A]
-        bool acim_autoflux_enable = false;
-        float acim_autoflux_attack_gain = 10.0f;
-        float acim_autoflux_decay_gain = 1.0f;
-
         // custom setters
         Controller* parent;
         void set_input_filter_bandwidth(float value) { input_filter_bandwidth = value; parent->update_filter_gains(); }
