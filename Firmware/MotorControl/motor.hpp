@@ -142,7 +142,7 @@ public:
     float* phase_vel_src_ = nullptr; // Usually points to the Encoder object's output
     float Vd_setpoint_ = NAN; // fed to the FOC
     float Vq_setpoint_ = NAN; // fed to the FOC
-    float Id_setpoint_ = NAN; // fed to the FOC
+    float Id_setpoint_ = 0.0f; // fed to the FOC
     float Iq_setpoint_ = NAN; // fed to the FOC
     
     PhaseControlLaw<3>* control_law_;

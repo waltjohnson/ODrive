@@ -7,8 +7,6 @@
 template<size_t N_PHASES>
 class PhaseControlLaw {
 public:
-    using Result = std::variant<std::array<float, N_PHASES>, ODriveIntf::MotorIntf::Error>;
-
     /**
      * @brief Called when this controller becomes the active controller.
      */
@@ -44,17 +42,27 @@ public:
      * @param output_timestamp: The timestamp (in HCLK ticks) corresponding to
      *        the middle of the time span during which the output will be
      *        active.
+     * @param pwm_timings: This array referenced by this argument shall be
+     *        filled with the desired PWM timings. Each item corresponds to one
+     *        phase and must lie in [0.0f, 1.0f].
+     *        The function is not required to return valid PWM timings in case
+     *        of an error.
+     * @param ibus: The variable pointed to by this argument is set to the
+     *        estimated DC current around the output timestamp when the desired
+     *        PWM timings get applied.
+     *        The function is not required to return a valid I_bus estimate in
+     *        case of an error.
      * 
-     * @returns: This function shall return an array of PWM timings, each item
-     *           corresponding to one phase. Each of the PWM values must lie in
-     *           0.0f...1.0f.
-     *           If the function returns an error the motor gets disarmed with
-     *           one exception: If the controller never returned valid PWM
-     *           timings since it became active then it is allowed to return
-     *           ERROR_CONTROLLER_INITIALIZING without triggering a motor disarm.
-     *           In this phase the PWMs will not yet be truly active.
+     * @returns: An error code or ERROR_NONE. If the function returns an error
+     *           the motor gets disarmed with one exception: If the controller
+     *           never returned valid PWM timings since it became active then it
+     *           is allowed to return ERROR_CONTROLLER_INITIALIZING without
+     *           triggering a motor disarm. In this phase the PWMs will not yet
+     *           be truly active.
      */
-    virtual Result get_output(uint32_t output_timestamp) = 0;
+    virtual ODriveIntf::MotorIntf::Error get_output(uint32_t output_timestamp,
+                              float (&pwm_timings)[N_PHASES],
+                              float* ibus) = 0;
 };
 
 class AlphaBetaFrameController : public PhaseControlLaw<3> {
@@ -62,14 +70,18 @@ private:
     ODriveIntf::MotorIntf::Error on_measurement(float vbus_voltage,
         std::array<float, 3> currents, uint32_t input_timestamp) final;
 
-    Result get_output(uint32_t output_timestamp) final;
+    ODriveIntf::MotorIntf::Error get_output(uint32_t output_timestamp,
+                      float (&pwm_timings)[3],
+                      float* ibus) final;
 
 protected:
     virtual ODriveIntf::MotorIntf::Error on_measurement(
             float vbus_voltage, float Ialpha, float Ibeta, uint32_t input_timestamp) = 0;
 
-    virtual std::variant<std::tuple<float, float>, ODriveIntf::MotorIntf::Error> get_alpha_beta_output(
-            uint32_t output_timestamp) = 0;
+    virtual ODriveIntf::MotorIntf::Error get_alpha_beta_output(
+            uint32_t output_timestamp,
+            float* mod_alpha, float* mod_beta,
+            float* ibus) = 0;
 };
 
 #endif // __PHASE_CONTROL_LAW_HPP

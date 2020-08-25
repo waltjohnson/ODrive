@@ -19,8 +19,8 @@ public:
     ODriveIntf::MotorIntf::Error on_measurement(
             float vbus_voltage, float Ialpha, float Ibeta, uint32_t input_timestamp) final;
 
-    std::variant<std::tuple<float, float>, ODriveIntf::MotorIntf::Error> get_alpha_beta_output(
-            uint32_t output_timestamp) final;
+    ODriveIntf::MotorIntf::Error get_alpha_beta_output(
+            uint32_t output_timestamp, float* mod_alpha, float* mod_beta, float* ibus) final;
 
     // Config - these values are set while this controller is inactive
     float p_gain_ = NAN; // [V/A] should be auto set after resistance and inductance measurement
@@ -57,6 +57,7 @@ public:
     float mod_to_V_ = 0.0f;
     float mod_d_ = 0.0f;
     float mod_q_ = 0.0f;
+    float ibus_ = 0.0f;
     float final_v_alpha_ = 0.0f; // [V]
     float final_v_beta_ = 0.0f; // [V]
 };

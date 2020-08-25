@@ -25,7 +25,8 @@ struct ResistanceMeasurementCotnrolLaw : AlphaBetaFrameController {
         float vbus_voltage, float Ialpha, float Ibeta,
         uint32_t input_timestamp) final
     {
-        test_voltage_ += (kI * current_meas_period) * (test_current_ - Ialpha);
+        actual_current_ = Ialpha;
+        test_voltage_ += (kI * current_meas_period) * (target_current_ - actual_current_);
     
         if (std::abs(test_voltage_) > max_voltage_) {
             test_voltage_ = NAN;
@@ -39,21 +40,25 @@ struct ResistanceMeasurementCotnrolLaw : AlphaBetaFrameController {
         }
     }
 
-    std::variant<std::tuple<float, float>, ODriveIntf::MotorIntf::Error> get_alpha_beta_output(uint32_t output_timestamp) {
+    ODriveIntf::MotorIntf::Error get_alpha_beta_output(uint32_t output_timestamp, float* mod_alpha, float* mod_beta, float* ibus) {
         if (std::isnan(test_mod_)) {
-            return {Motor::ERROR_CONTROLLER_INITIALIZING};
+            return Motor::ERROR_CONTROLLER_INITIALIZING;
         } else {
-            return std::make_tuple(test_mod_, 0.0f);
+            *mod_alpha = test_mod_;
+            *mod_beta = 0.0f;
+            *ibus = test_mod_ * actual_current_;
+            return Motor::ERROR_NONE;
         }
     }
 
     float get_resistance() {
-        return test_voltage_ / test_current_;
+        return test_voltage_ / target_current_;
     }
 
     const float kI = 10.0f; // [(V/s)/A]
     float max_voltage_ = 0.0f;
-    float test_current_ = 0.0f;
+    float actual_current_ = 0.0f;
+    float target_current_ = 0.0f;
     float test_voltage_ = 0.0f;
     float test_mod_ = NAN;
 };
@@ -91,12 +96,15 @@ struct InductanceMeasurementCotnrolLaw : AlphaBetaFrameController {
         return Motor::ERROR_NONE;
     }
 
-    std::variant<std::tuple<float, float>, ODriveIntf::MotorIntf::Error> get_alpha_beta_output(
-        uint32_t output_timestamp) final
+    ODriveIntf::MotorIntf::Error get_alpha_beta_output(
+        uint32_t output_timestamp, float* mod_alpha, float* mod_beta, float* ibus) final
     {
         test_voltage_ *= -1.0f;
         float vfactor = 1.0f / ((2.0f / 3.0f) * vbus_voltage);
-        return std::make_tuple(test_voltage_ * vfactor, 0.0f);
+        *mod_alpha = test_voltage_ * vfactor;
+        *mod_beta = 0.0f;
+        *ibus = 0.0f;
+        return Motor::ERROR_NONE;
     }
 
     float get_inductance() {
@@ -366,7 +374,7 @@ float Motor::phase_current_from_adcval(uint32_t ADCValue) {
 // TODO check Ibeta balance to verify good motor connection
 bool Motor::measure_phase_resistance(float test_current, float max_voltage) {
     ResistanceMeasurementCotnrolLaw control_law;
-    control_law.test_current_ = test_current;
+    control_law.target_current_ = test_current;
     control_law.max_voltage_ = max_voltage;
 
     arm(&control_law);
@@ -498,6 +506,14 @@ void Motor::update() {
 
     if (config_.bEMF_FF_enable) {
         vq += phase_vel * (2.0f/3.0f) * (config_.torque_constant / config_.pole_pairs);
+    }
+
+    if (axis_->motor_.config_.motor_type == Motor::MOTOR_TYPE_GIMBAL) {
+        // reinterpret current as voltage
+        vd += id;
+        vq += iq;
+        id = NAN;
+        iq = NAN;
     }
 
     Vd_setpoint_ = vd;
@@ -644,20 +660,21 @@ void Motor::tim_update_cb(uint32_t adc_a, uint32_t adc_b, uint32_t adc_c) {
     }
 
     if (should_update_pwm) {
+        Error control_law_status = ERROR_CONTROLLER_FAILED;
+        float pwm_timings[3] = {NAN, NAN, NAN};
         float i_bus = 0.0f;
 
-        PhaseControlLaw<3>::Result control_law_result = ERROR_CONTROLLER_FAILED;
         if (control_law_) {
-            control_law_result = control_law_->get_output(last_update_timestamp_ + 2 * TIM_1_8_PERIOD_CLOCKS * (TIM_1_8_RCR + 1));
+            control_law_status = control_law_->get_output(
+                last_update_timestamp_ + 2 * TIM_1_8_PERIOD_CLOCKS * (TIM_1_8_RCR + 1),
+                pwm_timings, &i_bus);
         }
 
         // Apply control law to calculate PWM duty cycles
-        if (is_armed_ && (control_law_result.index() == 0)) {
-            std::array<float, 3> pwm_timings = std::get<0>(control_law_result);
-
+        if (is_armed_ && control_law_status == ERROR_NONE) {
             // Calculate DC power consumption
             // Note that a pwm_timing of 1 corresponds to DC- and 0 corresponds to DC+
-            i_bus = (0.5f - pwm_timings[0]) * current_meas_.phA + (0.5f - pwm_timings[1]) * current_meas_.phB + (0.5f - pwm_timings[2]) * current_meas_.phC;
+            //i_bus = (0.5f - pwm_timings[0]) * current_meas_.phA + (0.5f - pwm_timings[1]) * current_meas_.phB + (0.5f - pwm_timings[2]) * current_meas_.phC;
 
             uint16_t next_timings[] = {
                 (uint16_t)(pwm_timings[0] * (float)TIM_1_8_PERIOD_CLOCKS),
@@ -667,11 +684,12 @@ void Motor::tim_update_cb(uint32_t adc_a, uint32_t adc_b, uint32_t adc_c) {
 
             apply_pwm_timings(next_timings, false);
         } else if (is_armed_) {
-            if (!(timer_->Instance->BDTR & TIM_BDTR_MOE) && (control_law_result == PhaseControlLaw<3>::Result{ERROR_CONTROLLER_INITIALIZING})) {
+            i_bus = 0.0f;
+            if (!(timer_->Instance->BDTR & TIM_BDTR_MOE) && (control_law_status == ERROR_CONTROLLER_INITIALIZING)) {
                 // If the PWM output is armed in software but not yet in
                 // hardware we tolerate the "initializing" error.
             } else {
-                disarm_with_error((control_law_result.index() == 1) ? std::get<1>(control_law_result) : ERROR_CONTROLLER_FAILED);
+                disarm_with_error(control_law_status);
             }
         }
 

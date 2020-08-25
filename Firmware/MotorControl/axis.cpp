@@ -329,8 +329,13 @@ bool Axis::start_closed_loop_control() {
         motor_.current_control_.Iq_setpoint_src_ = &motor_.Iq_setpoint_;
         motor_.current_control_.Vd_setpoint_src_ = &motor_.Vd_setpoint_;
         motor_.current_control_.Vq_setpoint_src_ = &motor_.Vq_setpoint_;
-        motor_.current_control_.phase_src_ = sensorless_mode ? &sensorless_estimator_.phase_ : &encoder_.phase_;
-        motor_.current_control_.phase_vel_src_ = sensorless_mode ? &sensorless_estimator_.vel_estimate_ : &encoder_.phase_vel_;
+        motor_.current_control_.phase_src_
+            = async_estimator_.rotor_phase_src_
+            = sensorless_mode ? &sensorless_estimator_.phase_ : &encoder_.phase_;
+        motor_.phase_vel_src_
+            = motor_.current_control_.phase_vel_src_
+            = async_estimator_.rotor_phase_vel_src_
+            = sensorless_mode ? &sensorless_estimator_.vel_estimate_ : &encoder_.phase_vel_;
     }
     wait_for_control_iteration();
 

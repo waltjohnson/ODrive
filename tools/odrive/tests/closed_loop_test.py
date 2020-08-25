@@ -211,8 +211,9 @@ class TestRegenProtection(TestClosedLoopControlBase):
             axis_ctx.parent.handle.config.dc_max_negative_current = -0.2
             axis_ctx.handle.controller.input_vel = 0 # this should fail almost instantaneously
             time.sleep(0.1)
-            test_assert_eq(axis_ctx.handle.error, AXIS_ERROR_MOTOR_DISARMED | AXIS_ERROR_BRAKE_RESISTOR_DISARMED)
-            test_assert_eq(axis_ctx.handle.motor.error, MOTOR_ERROR_DC_BUS_OVER_REGEN_CURRENT)
+            test_assert_eq(axis_ctx.parent.handle.error, ODRIVE_ERROR_DC_BUS_OVER_REGEN_CURRENT)
+            test_assert_eq(axis_ctx.handle.motor.error, MOTOR_ERROR_BRAKE_RESISTOR_DISARMED | MOTOR_ERROR_SYSTEM_LEVEL)
+            test_assert_eq(axis_ctx.handle.error, 0)
 
 
 class TestVelLimitInTorqueControl(TestClosedLoopControlBase):

@@ -11,23 +11,22 @@ Motor::Error AlphaBetaFrameController::on_measurement(
     return on_measurement(vbus_voltage, Ialpha, Ibeta, input_timestamp);
 }
 
-std::variant<std::array<float, 3>, Motor::Error> AlphaBetaFrameController::get_output(
-            uint32_t output_timestamp) {
-    auto result = get_alpha_beta_output(output_timestamp);
+Motor::Error AlphaBetaFrameController::get_output(
+            uint32_t output_timestamp, float (&pwm_timings)[3], float* ibus) {
+    float mod_alpha = NAN;
+    float mod_beta = NAN;
+
+    Motor::Error status = get_alpha_beta_output(output_timestamp, &mod_alpha, &mod_beta, ibus);
     
-    if (result.index() == 1) {
-        return std::get<1>(result);
+    if (status != Motor::ERROR_NONE) {
+        return status;
+    } else if (std::isnan(mod_alpha) || std::isnan(mod_alpha)) {
+        return Motor::ERROR_MODULATION_IS_NAN;
+    } else if (SVM(mod_alpha, mod_beta, &pwm_timings[0], &pwm_timings[1], &pwm_timings[2]) != 0) {
+        return Motor::ERROR_MODULATION_MAGNITUDE;
     }
 
-    float mod_alpha = std::get<0>(std::get<0>(result));
-    float mod_beta = std::get<1>(std::get<0>(result));
-    float tA, tB, tC;
-    if (std::isnan(mod_alpha) || std::isnan(mod_alpha))
-        return Motor::ERROR_MODULATION_IS_NAN;
-    if (SVM(mod_alpha, mod_beta, &tA, &tB, &tC) != 0)
-        return Motor::ERROR_MODULATION_MAGNITUDE;
-
-    return std::array<float, 3>{tA, tB, tC};
+    return Motor::ERROR_NONE;
 }
 
 void FieldOrientedController::reset() {
@@ -36,6 +35,7 @@ void FieldOrientedController::reset() {
     mod_to_V_ = NAN;
     mod_d_ = NAN;
     mod_q_ = NAN;
+    ibus_ = NAN;
 }
 
 Motor::Error FieldOrientedController::on_measurement(
@@ -119,11 +119,12 @@ Motor::Error FieldOrientedController::on_measurement(
 
     mod_d_ = mod_d;
     mod_q_ = mod_q;
+    ibus_ = mod_d * Id + mod_q * Iq;
     return Motor::ERROR_NONE;
 }
 
-std::variant<std::tuple<float, float>, ODriveIntf::MotorIntf::Error> FieldOrientedController::get_alpha_beta_output(
-        uint32_t output_timestamp) {
+ODriveIntf::MotorIntf::Error FieldOrientedController::get_alpha_beta_output(
+        uint32_t output_timestamp, float* mod_alpha, float* mod_beta, float* ibus) {
     if (std::isnan(mod_d_) || std::isnan(mod_q_)) {
         return Motor::ERROR_CONTROLLER_INITIALIZING;
     }
@@ -132,14 +133,17 @@ std::variant<std::tuple<float, float>, ODriveIntf::MotorIntf::Error> FieldOrient
     float pwm_phase = phase_ + phase_vel_ * ((float)(output_timestamp - timestamp_) / (float)TIM_1_8_CLOCK_HZ);
     float c_p = our_arm_cos_f32(pwm_phase);
     float s_p = our_arm_sin_f32(pwm_phase);
-    float mod_alpha = c_p * mod_d_ - s_p * mod_q_;
-    float mod_beta = c_p * mod_q_ + s_p * mod_d_;
+    float mod_alpha_temp = c_p * mod_d_ - s_p * mod_q_;
+    float mod_beta_temp = c_p * mod_q_ + s_p * mod_d_;
 
     // Report final applied voltage in stationary frame (for sensorless estimator)
-    final_v_alpha_ = mod_to_V_ * mod_alpha;
-    final_v_beta_ = mod_to_V_ * mod_beta;
+    final_v_alpha_ = mod_to_V_ * mod_alpha_temp;
+    final_v_beta_ = mod_to_V_ * mod_beta_temp;
 
-    return std::make_tuple(mod_alpha, mod_beta);
+    *mod_alpha = mod_alpha_temp;
+    *mod_beta = mod_beta_temp;
+    *ibus = ibus_;
+    return Motor::ERROR_NONE;
 }
 
 void FieldOrientedController::update(uint32_t timestamp) {
