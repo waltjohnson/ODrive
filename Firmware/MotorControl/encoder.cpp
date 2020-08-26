@@ -237,13 +237,13 @@ bool Encoder::run_offset_calibration() {
         axis_->motor_.current_control_.Iq_setpoint_src_ = &axis_->open_loop_controller_.Iq_setpoint_;
         axis_->motor_.current_control_.Vd_setpoint_src_ = &axis_->open_loop_controller_.Vd_setpoint_;
         axis_->motor_.current_control_.Vq_setpoint_src_ = &axis_->open_loop_controller_.Vq_setpoint_;
-        axis_->motor_.current_control_.phase_src_
-            = axis_->async_estimator_.rotor_phase_src_
-            = &axis_->open_loop_controller_.phase_;
-        axis_->motor_.phase_vel_src_
-            = axis_->motor_.current_control_.phase_vel_src_
-            = axis_->async_estimator_.rotor_phase_vel_src_
-            = &axis_->open_loop_controller_.phase_vel_;
+        axis_->motor_.current_control_.phase_src_ =
+        axis_->async_estimator_.rotor_phase_src_ =
+            &axis_->open_loop_controller_.phase_;
+        axis_->motor_.phase_vel_src_ =
+        axis_->motor_.current_control_.phase_vel_src_ =
+        axis_->async_estimator_.rotor_phase_vel_src_ =
+            &axis_->open_loop_controller_.phase_vel_;
     }
     axis_->wait_for_control_iteration();
 
