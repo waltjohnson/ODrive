@@ -72,16 +72,16 @@ void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 6, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 7, 0); // SPI RX - must have lower priority than SPI TX
   HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
   /* DMA1_Stream2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 6, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 7, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
   /* DMA1_Stream4_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 6, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 7, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
   /* DMA1_Stream5_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 6, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 6, 0); // SPI TX - must have higher priority than SPI RX
   HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
   /* DMA2_Stream0_IRQn interrupt configuration */
   // Dear STM, no we _don't_ want to fire an interrupt for this DMA

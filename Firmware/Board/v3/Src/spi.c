@@ -125,7 +125,7 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
     }
     
     hdma_spi3_tx.Init.Mode = DMA_NORMAL;
-    hdma_spi3_tx.Init.Priority = DMA_PRIORITY_MEDIUM;
+    hdma_spi3_tx.Init.Priority = DMA_PRIORITY_HIGH; // SPI TX must have higher priority than SPI RX
     hdma_spi3_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
     if (HAL_DMA_Init(&hdma_spi3_tx) != HAL_OK)
     {
