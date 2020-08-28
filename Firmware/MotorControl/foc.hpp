@@ -38,7 +38,7 @@ public:
 
     // These values are set atomically by the update() function and read by the
     // calculate() function in an interrupt context.
-    uint32_t timestamp_; // [HCLK ticks]
+    uint32_t ctrl_timestamp_; // [HCLK ticks]
     bool enable_current_control_ = false; // true: FOC runs in current control mode using I{dq}_setpoint, false: FOC runs in voltage control mode using V{dq}_setpoint
     float Id_setpoint_; // [A] only used if enable_current_control_ == true
     float Iq_setpoint_; // [A] only used if enable_current_control_ == true
@@ -48,16 +48,18 @@ public:
     float phase_vel_; // [rad/s]
 
     // These values (or some of them) are updated inside on_measurement() and get_alpha_beta_output()
-    float Ialpha_measured_ = 0.0f; // [A]
-    float Ibeta_measured_ = 0.0f; // [A]
+    uint32_t i_timestamp_;
+    float vbus_voltage_measured_ = NAN; // [V]
+    float Ialpha_measured_ = NAN; // [A]
+    float Ibeta_measured_ = NAN; // [A]
     float Id_measured_ = 0.0f; // [A]
     float Iq_measured_ = 0.0f; // [A]
     float v_current_control_integral_d_ = 0.0f; // [V]
     float v_current_control_integral_q_ = 0.0f; // [V]
-    float mod_to_V_ = 0.0f;
-    float mod_d_ = 0.0f;
-    float mod_q_ = 0.0f;
-    float ibus_ = 0.0f;
+    //float mod_to_V_ = 0.0f;
+    //float mod_d_ = 0.0f;
+    //float mod_q_ = 0.0f;
+    //float ibus_ = 0.0f;
     float final_v_alpha_ = 0.0f; // [V]
     float final_v_beta_ = 0.0f; // [V]
 };

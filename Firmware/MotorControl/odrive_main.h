@@ -9,6 +9,7 @@
 #include <communication/interface_usb.h>
 #include <communication/interface_i2c.h>
 #include <communication/interface_uart.h>
+#include <task_timer.hpp>
 extern "C" {
 #endif
 
@@ -99,6 +100,13 @@ struct BoardConfig_t {
     PWMMapping_t pwm_mappings[4];
     PWMMapping_t analog_mappings[GPIO_COUNT];
 };
+
+struct TaskTimes {
+    TaskTimer sampling;
+    TaskTimer control_loop_misc;
+    TaskTimer control_loop_checks;
+};
+
 
 // Forward Declarations
 class Axis;
@@ -229,7 +237,9 @@ public:
     uint32_t test_property_ = 0;
 
     uint32_t last_update_timestamp_ = 0;
-    uint16_t last_update_cnt_ = 0;
+    uint32_t n_evt_sampling_ = 0;
+    uint32_t n_evt_control_loop_ = 0;
+    TaskTimes task_times_;
 };
 
 extern ODrive odrv; // defined in main.cpp

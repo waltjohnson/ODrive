@@ -12,6 +12,7 @@ class Axis;
 #include "endstop.hpp"
 #include "low_level.h"
 #include "utils.hpp"
+#include "task_timer.hpp"
 
 #include <array>
 
@@ -27,6 +28,22 @@ public:
         bool finish_on_vel = false;
         bool finish_on_distance = false;
         bool finish_on_enc_idx = false;
+    };
+
+    struct TaskTimes {
+        TaskTimer thermistor_update;
+        TaskTimer encoder_update;
+        TaskTimer sensorless_estimator_update;
+        TaskTimer endstop_update;
+        TaskTimer can_heartbeat;
+        TaskTimer controller_update;
+        TaskTimer open_loop_controller_update;
+        TaskTimer async_estimator_update;
+        TaskTimer motor_update;
+        TaskTimer current_controller_update;
+        TaskTimer dc_calib;
+        TaskTimer current_sense;
+        TaskTimer pwm_update;
     };
 
     static LockinConfig_t default_calibration();
@@ -144,6 +161,7 @@ public:
     TrapezoidalTrajectory& trap_traj_;
     Endstop& min_endstop_;
     Endstop& max_endstop_;
+    TaskTimes task_times_;
 
     // List of current_limiters and thermistors to
     // provide easy iteration.

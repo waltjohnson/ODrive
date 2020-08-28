@@ -109,7 +109,7 @@ class TestSimpleCANClosedLoop():
 
         # run calibration
         axis_ctx.handle.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
-        while axis_ctx.handle.current_state != AXIS_STATE_IDLE:
+        while axis_ctx.handle.requested_state != AXIS_STATE_UNDEFINED or axis_ctx.handle.current_state != AXIS_STATE_IDLE:
             time.sleep(1)
         test_assert_eq(axis_ctx.handle.current_state, AXIS_STATE_IDLE)
         test_assert_no_error(axis_ctx)
@@ -156,7 +156,7 @@ class TestSimpleCANClosedLoop():
             def fence(): my_req('get_vbus_voltage') # fence to ensure the CAN command was sent
             
             axis_ctx.handle.config.enable_watchdog = False
-            axis_ctx.handle.clear_errors()
+            odrive.handle.clear_errors()
             axis_ctx.handle.config.can_node_id = node_id
             axis_ctx.handle.config.can_node_id_extended = extended_id
             time.sleep(0.1)
@@ -173,7 +173,7 @@ class TestSimpleCANClosedLoop():
             vel_limit = 15.0
             nominal_vel = 10.0
             axis_ctx.handle.controller.config.vel_limit = vel_limit
-            axis_ctx.handle.motor.config.current_lim = 30.0
+            axis_ctx.handle.motor.config.current_lim = 20.0
 
             my_cmd('set_requested_state', requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL)
             fence()

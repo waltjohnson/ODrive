@@ -8,14 +8,6 @@ class Motor;
 #include <autogen/interfaces.hpp>
 #include "foc.hpp"
 
-enum TimingLog_t {
-    TIMING_LOG_UPDATE_START,
-    TIMING_LOG_CURRENT_MEAS,
-    TIMING_LOG_DC_CAL,
-    TIMING_LOG_CTRL_DONE,
-    TIMING_LOG_NUM_SLOTS
-};
-
 class Motor : public ODriveIntf::MotorIntf {
 public:
     struct Iph_ABC_t {
@@ -90,13 +82,16 @@ public:
     bool do_checks(uint32_t timestamp);
     float effective_current_lim();
     float max_available_torque();
-    void log_timing(TimingLog_t log_idx);
     float phase_current_from_adcval(uint32_t ADCValue);
     bool measure_phase_resistance(float test_current, float max_voltage);
     bool measure_phase_inductance(float test_voltage);
     bool run_calibration();
     void update();
-    void tim_update_cb(uint32_t adc_a, uint32_t adc_b, uint32_t adc_c);
+
+    // These functions are called as appropriate from the board.cpp file.
+    void current_meas_cb(uint32_t timestamp, Iph_ABC_t current);
+    void dc_calib_cb(uint32_t timestamp, Iph_ABC_t current);
+    void pwm_update_cb(uint32_t output_timestamp);
 
     // hardware config
     TIM_HandleTypeDef* const timer_;
@@ -110,15 +105,8 @@ public:
 
 //private:
 
-    uint32_t last_update_timestamp_ = 0;
-    bool counting_down_ = false;
-    uint16_t last_cpu_time_ = 0;
-    int timing_log_index_ = 0;
-    struct {
-        uint16_t& operator[](size_t idx) { return content[idx]; }
-        uint16_t& get(size_t idx) { return content[idx]; }
-        uint16_t content[TIMING_LOG_NUM_SLOTS];
-    } timing_log_;
+    uint32_t n_evt_current_measurement_ = 0;
+    uint32_t n_evt_pwm_update_ = 0;
 
     // variables exposed on protocol
     Error error_ = ERROR_NONE;

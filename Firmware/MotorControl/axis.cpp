@@ -113,8 +113,8 @@ void Axis::start_thread() {
  * @brief Blocks until at least one complete control loop has been executed.
  */
 bool Axis::wait_for_control_iteration() {
-    uint16_t control_iteration_num = odrv.last_update_cnt_;
-    while (odrv.last_update_cnt_ == control_iteration_num) {
+    uint16_t control_iteration_num = odrv.n_evt_control_loop_;
+    while (odrv.n_evt_control_loop_ == control_iteration_num) {
         osDelay(1);
     }
     return true;
@@ -223,13 +223,13 @@ bool Axis::run_lockin_spin(const LockinConfig_t &lockin_config) {
         motor_.current_control_.Iq_setpoint_src_ = &open_loop_controller_.Iq_setpoint_;
         motor_.current_control_.Vd_setpoint_src_ = &open_loop_controller_.Vd_setpoint_;
         motor_.current_control_.Vq_setpoint_src_ = &open_loop_controller_.Vq_setpoint_;
-        motor_.current_control_.phase_src_
-            = async_estimator_.rotor_phase_src_
-            = &open_loop_controller_.phase_;
-        motor_.phase_vel_src_
-            = motor_.current_control_.phase_vel_src_
-            = async_estimator_.rotor_phase_vel_src_
-            = &open_loop_controller_.phase_vel_;
+        motor_.current_control_.phase_src_ =
+        async_estimator_.rotor_phase_src_ =
+            &open_loop_controller_.phase_;
+        motor_.phase_vel_src_ =
+        motor_.current_control_.phase_vel_src_ =
+        async_estimator_.rotor_phase_vel_src_ =
+            &open_loop_controller_.phase_vel_;
     }
     wait_for_control_iteration();
 
@@ -329,13 +329,13 @@ bool Axis::start_closed_loop_control() {
         motor_.current_control_.Iq_setpoint_src_ = &motor_.Iq_setpoint_;
         motor_.current_control_.Vd_setpoint_src_ = &motor_.Vd_setpoint_;
         motor_.current_control_.Vq_setpoint_src_ = &motor_.Vq_setpoint_;
-        motor_.current_control_.phase_src_
-            = async_estimator_.rotor_phase_src_
-            = sensorless_mode ? &sensorless_estimator_.phase_ : &encoder_.phase_;
-        motor_.phase_vel_src_
-            = motor_.current_control_.phase_vel_src_
-            = async_estimator_.rotor_phase_vel_src_
-            = sensorless_mode ? &sensorless_estimator_.vel_estimate_ : &encoder_.phase_vel_;
+        motor_.current_control_.phase_src_ =
+        async_estimator_.rotor_phase_src_ =
+           sensorless_mode ? &sensorless_estimator_.phase_ : &encoder_.phase_;
+        motor_.phase_vel_src_ =
+        motor_.current_control_.phase_vel_src_ =
+        async_estimator_.rotor_phase_vel_src_ =
+           sensorless_mode ? &sensorless_estimator_.vel_estimate_ : &encoder_.phase_vel_;
     }
     wait_for_control_iteration();
 

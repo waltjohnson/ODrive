@@ -240,8 +240,12 @@ void ODrive::disarm_with_error(Error error) {
  * control_loop_cb() instead.
  */
 void ODrive::sampling_cb() {
-    for (auto& axis: axes) {
-        axis.encoder_.sample_now();
+    n_evt_sampling_++;
+
+    MEASURE_TIME(task_times_.sampling) {
+        for (auto& axis: axes) {
+            axis.encoder_.sample_now();
+        }
     }
 }
 
@@ -260,40 +264,65 @@ void ODrive::sampling_cb() {
  */
 void ODrive::control_loop_cb(uint32_t timestamp) {
     last_update_timestamp_ = timestamp;
-    last_update_cnt_++;
+    n_evt_control_loop_++;
 
     // TODO: use a configurable component list for most of the following things
 
-    uart_poll();
-    odrv.oscilloscope_.update();
+    MEASURE_TIME(task_times_.control_loop_misc) {
+        uart_poll();
+        odrv.oscilloscope_.update();
+    }
 
-    for (auto& axis: axes) {
-        // look for errors at axis level and also all subcomponents
-        bool checks_ok = axis.do_checks(timestamp);
+    MEASURE_TIME(task_times_.control_loop_checks) {
+        for (auto& axis: axes) {
+            // look for errors at axis level and also all subcomponents
+            bool checks_ok = axis.do_checks(timestamp);
 
-        // make sure the watchdog is being fed. 
-        bool watchdog_ok = axis.watchdog_check();
+            // make sure the watchdog is being fed. 
+            bool watchdog_ok = axis.watchdog_check();
 
-        if (!checks_ok || !watchdog_ok) {
-            axis.motor_.disarm();
+            if (!checks_ok || !watchdog_ok) {
+                axis.motor_.disarm();
+            }
         }
     }
 
     for (auto& axis: axes) {
         // Sub-components should use set_error which will propegate to this error_
-        for (ThermistorCurrentLimiter* thermistor : axis.thermistors_) {
-            thermistor->update();
+        MEASURE_TIME(axis.task_times_.thermistor_update) {
+            for (ThermistorCurrentLimiter* thermistor : axis.thermistors_) {
+                thermistor->update();
+            }
         }
-        axis.encoder_.update();
-        axis.sensorless_estimator_.update();
-        axis.min_endstop_.update();
-        axis.max_endstop_.update();
-        odCAN->send_heartbeat(&axis);
-        axis.controller_.update(); // uses position and velocity from encoder
-        axis.open_loop_controller_.update(timestamp);
-        axis.async_estimator_.update(timestamp);
-        axis.motor_.update(); // uses torque from controller and phase_vel from encoder
-        axis.motor_.current_control_.update(timestamp); // uses the output of controller_ or open_loop_contoller_ and encoder_ or sensorless_estimator_ or async_estimator_
+
+        MEASURE_TIME(axis.task_times_.encoder_update)
+            axis.encoder_.update();
+
+        MEASURE_TIME(axis.task_times_.sensorless_estimator_update)
+            axis.sensorless_estimator_.update();
+
+        MEASURE_TIME(axis.task_times_.endstop_update) {
+            axis.min_endstop_.update();
+            axis.max_endstop_.update();
+        }
+
+        MEASURE_TIME(axis.task_times_.can_heartbeat)
+            odCAN->send_heartbeat(&axis);
+
+        MEASURE_TIME(axis.task_times_.controller_update)
+            axis.controller_.update(); // uses position and velocity from encoder
+
+        MEASURE_TIME(axis.task_times_.open_loop_controller_update)
+            axis.open_loop_controller_.update(timestamp);
+
+        MEASURE_TIME(axis.task_times_.async_estimator_update)
+            axis.async_estimator_.update(timestamp);
+
+        MEASURE_TIME(axis.task_times_.motor_update)
+            axis.motor_.update(); // uses torque from controller and phase_vel from encoder
+
+        MEASURE_TIME(axis.task_times_.current_controller_update)
+            axis.motor_.current_control_.update(timestamp); // uses the output of controller_ or open_loop_contoller_ and encoder_ or sensorless_estimator_ or async_estimator_
     }
 }
 

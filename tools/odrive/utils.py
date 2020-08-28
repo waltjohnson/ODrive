@@ -525,4 +525,41 @@ def dump_dma(odrv):
                      ("(" + ch_name + ")").ljust(30),
                      "*" if (status & 0x80000000) else " "))
 
+def dump_timing(odrv, n_samples=100, path='/tmp/timings.png'):
+    timings = []
+    
+    for attr in dir(odrv.task_times):
+        if not attr.startswith('_'):
+            timings.append((attr, getattr(odrv.task_times, attr), [], [])) # (name, obj, start_times, lengths)
+    for attr in dir(odrv.axis0.task_times):
+        if not attr.startswith('_'):
+            timings.append(('axis0.' + attr, getattr(odrv.axis0.task_times, attr), [], [])) # (name, obj, start_times, lengths)
+    for attr in dir(odrv.axis1.task_times):
+        if not attr.startswith('_'):
+            timings.append(('axis1.' + attr, getattr(odrv.axis1.task_times, attr), [], [])) # (name, obj, start_times, lengths)
 
+    # Take a couple of samples
+    print("sampling...")
+    for i in range(n_samples):
+        for name, obj, start_times, lengths in timings:
+            start_times.append(obj.start_time)
+            lengths.append(obj.length)
+    print("done")
+
+    # sort by start time
+    timings = sorted(timings, key = lambda x: np.mean(x[2]))
+
+    plt.rcParams['figure.figsize'] = 21, 9
+    plt.figure()
+    plt.grid('both')
+    plt.barh(
+        [-i for i in range(len(timings))], # y positions
+        [np.mean(lengths) for name, obj, start_times, lengths in timings], # lengths
+        left = [np.mean(start_times) for name, obj, start_times, lengths in timings], # starts
+        xerr = (
+            [np.std(lengths) for name, obj, start_times, lengths in timings], # error bars to the left side
+            [(min(obj.max_length, 20100) - np.mean(lengths)) for name, obj, start_times, lengths in timings], # error bars to the right side  - TODO: remove artificial min()
+        ),
+        tick_label = [name for name, obj, start_times, lengths in timings], # labels
+    )
+    plt.savefig(path, bbox_inches='tight')

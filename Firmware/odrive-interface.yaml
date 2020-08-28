@@ -99,6 +99,16 @@ interfaces:
         doc: 0 for official releases, 1 otherwise
       brake_resistor_armed: readonly bool
       brake_resistor_saturated: bool
+
+      # Diagnostics & performance monitoring
+      n_evt_sampling: {type: readonly uint32, doc: Number of input sampling events since startup (modulo 2^32)}
+      n_evt_control_loop: {type: readonly uint32, doc: Number of control loop iterations since startup (modulo 2^32)}
+      task_times:
+        c_is_class: False
+        attributes:
+          sampling: TaskTimer
+          control_loop_misc: TaskTimer
+          control_loop_checks: TaskTimer
       system_stats:
         c_is_class: False
         attributes:
@@ -127,6 +137,7 @@ interfaces:
               addr_match_cnt: readonly uint32
               rx_cnt: readonly uint32
               error_cnt: readonly uint32
+
       config:
         c_is_class: False
         attributes:
@@ -453,6 +464,22 @@ interfaces:
       trap_traj: TrapezoidalTrajectory
       min_endstop: Endstop
       max_endstop: Endstop
+      task_times:
+        c_is_class: False
+        attributes:
+          thermistor_update: TaskTimer
+          encoder_update: TaskTimer
+          sensorless_estimator_update: TaskTimer
+          endstop_update: TaskTimer
+          can_heartbeat: TaskTimer
+          controller_update: TaskTimer
+          open_loop_controller_update: TaskTimer
+          async_estimator_update: TaskTimer
+          motor_update: TaskTimer
+          current_controller_update: TaskTimer
+          dc_calib: TaskTimer
+          current_sense: TaskTimer
+          pwm_update: TaskTimer
     functions:
       watchdog_feed:
         doc: Feed the watchdog to prevent watchdog timeouts.
@@ -661,13 +688,9 @@ interfaces:
           v_current_control_integral_q: float32
           final_v_alpha: readonly float32
           final_v_beta: readonly float32
-      timing_log:
-        c_is_class: False
-        attributes:
-          update_start: {type: readonly uint16, c_name: 'get(0)'}
-          current_meas: {type: readonly uint16, c_name: 'get(1)'}
-          dc_cal: {type: readonly uint16, c_name: 'get(2)'}
-          ctrl_done: {type: readonly uint16, c_name: 'get(3)'}
+      n_evt_current_measurement: {type: readonly uint32, doc: Number of current measurement events since startup (modulo 2^32)}
+      n_evt_pwm_update: {type: readonly uint32, doc: Number of PWM update events since startup (modulo 2^32)}
+
       config:
         c_is_class: False
         attributes:
@@ -978,6 +1001,13 @@ interfaces:
           pullup: bool
           debounce_ms: {type: uint32, c_setter: set_debounce_ms}
 
+  ODrive.TaskTimer:
+    c_is_class: True
+    attributes:
+      start_time: readonly uint32
+      end_time: readonly uint32
+      length: readonly uint32
+      max_length: uint32
 
 valuetypes:
   ODrive.GpioMode:

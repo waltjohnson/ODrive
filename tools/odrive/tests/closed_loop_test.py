@@ -177,7 +177,7 @@ class TestRegenProtection(TestClosedLoopControlBase):
     def run_test(self, axis_ctx: ODriveAxisComponent, motor_ctx: MotorComponent, enc_ctx: EncoderComponent, logger: Logger):
         with self.prepare(axis_ctx, motor_ctx, enc_ctx, logger):
             nominal_rps = 15.0
-            max_current = 30.0
+            max_current = 20.0
         
             # Accept a bit of noise on Ibus
             axis_ctx.parent.handle.config.dc_max_negative_current = -0.5
@@ -212,7 +212,7 @@ class TestRegenProtection(TestClosedLoopControlBase):
             axis_ctx.handle.controller.input_vel = 0 # this should fail almost instantaneously
             time.sleep(0.1)
             test_assert_eq(axis_ctx.parent.handle.error, ODRIVE_ERROR_DC_BUS_OVER_REGEN_CURRENT)
-            test_assert_eq(axis_ctx.handle.motor.error, MOTOR_ERROR_BRAKE_RESISTOR_DISARMED | MOTOR_ERROR_SYSTEM_LEVEL)
+            test_assert_eq(axis_ctx.handle.motor.error & MOTOR_ERROR_SYSTEM_LEVEL, MOTOR_ERROR_SYSTEM_LEVEL)
             test_assert_eq(axis_ctx.handle.error, 0)
 
 

@@ -32,30 +32,42 @@ Motor::Error AlphaBetaFrameController::get_output(
 void FieldOrientedController::reset() {
     v_current_control_integral_d_ = 0.0f;
     v_current_control_integral_q_ = 0.0f;
-    mod_to_V_ = NAN;
-    mod_d_ = NAN;
-    mod_q_ = NAN;
-    ibus_ = NAN;
+    vbus_voltage_measured_ = NAN;
+    Ialpha_measured_ = NAN;
+    Ibeta_measured_ = NAN;
 }
 
 Motor::Error FieldOrientedController::on_measurement(
             float vbus_voltage, float Ialpha, float Ibeta,
             uint32_t input_timestamp) {
-    const uint32_t max_delay_us = 1000; // maximum age of the input data
-    mod_d_ = NAN;
-    mod_q_ = NAN;
-
-    // Ensure that input data is not from the future and that it's not too old
-    if ((int32_t)(input_timestamp - timestamp_) < 0) {
-        return Motor::ERROR_BAD_TIMING;
-    } else if (input_timestamp - timestamp_ > (uint32_t)((uint64_t)max_delay_us * (uint64_t)TIM_1_8_CLOCK_HZ / 1000000ULL)) {
-        return Motor::ERROR_BAD_TIMING;
-    }
-
+    // Store the measurements for later processing.
+    i_timestamp_ = input_timestamp;
+    vbus_voltage_measured_ = vbus_voltage;
     Ialpha_measured_ = Ialpha;
     Ibeta_measured_ = Ibeta;
 
+    return Motor::ERROR_NONE;
+}
+
+ODriveIntf::MotorIntf::Error FieldOrientedController::get_alpha_beta_output(
+        uint32_t output_timestamp, float* mod_alpha, float* mod_beta, float* ibus) {
+
+    if (std::isnan(vbus_voltage_measured_) || std::isnan(Ialpha_measured_) || std::isnan(Ibeta_measured_)) {
+        // FOC didn't receive a current measurement yet.
+        return Motor::ERROR_CONTROLLER_INITIALIZING;
+    } else if (abs((int32_t)(i_timestamp_ - ctrl_timestamp_)) > MAX_CONTROL_LOOP_UPDATE_TO_CURRENT_UPDATE_DELTA) {
+        // Data from control loop and current measurement are too far apart.
+        return Motor::ERROR_BAD_TIMING;
+    }
+
+    // TODO: improve efficiency in case PWM updates are requested at a higher
+    // rate than current sensor updates. In this case we can reuse mod_d and
+    // mod_q from a previous iteration.
+
     // Fetch member variables into local variables to make the optimizer's life easier.
+    float vbus_voltage = vbus_voltage_measured_;
+    float Ialpha = Ialpha_measured_;
+    float Ibeta = Ibeta_measured_;
     float Vd = Vd_setpoint_;
     float Vq = Vq_setpoint_;
     float Id_setpoint = Id_setpoint_;
@@ -68,7 +80,7 @@ Motor::Error FieldOrientedController::on_measurement(
     }
 
     // Park transform
-    float I_phase = phase + phase_vel * ((float)(input_timestamp - timestamp_) / (float)TIM_1_8_CLOCK_HZ);
+    float I_phase = phase + phase_vel * ((float)(int32_t)(i_timestamp_ - ctrl_timestamp_) / (float)TIM_1_8_CLOCK_HZ);
     float c_I = our_arm_cos_f32(I_phase);
     float s_I = our_arm_sin_f32(I_phase);
     float Id = c_I * Ialpha + s_I * Ibeta;
@@ -96,8 +108,8 @@ Motor::Error FieldOrientedController::on_measurement(
         return Motor::ERROR_UNKNOWN_VBUS_VOLTAGE;
     }
 
-    mod_to_V_ = (2.0f / 3.0f) * vbus_voltage;
-    float V_to_mod = 1.0f / mod_to_V_;
+    float mod_to_V = (2.0f / 3.0f) * vbus_voltage;
+    float V_to_mod = 1.0f / mod_to_V;
     float mod_d = V_to_mod * Vd;
     float mod_q = V_to_mod * Vq;
 
@@ -117,38 +129,26 @@ Motor::Error FieldOrientedController::on_measurement(
         }
     }
 
-    mod_d_ = mod_d;
-    mod_q_ = mod_q;
-    ibus_ = mod_d * Id + mod_q * Iq;
-    return Motor::ERROR_NONE;
-}
-
-ODriveIntf::MotorIntf::Error FieldOrientedController::get_alpha_beta_output(
-        uint32_t output_timestamp, float* mod_alpha, float* mod_beta, float* ibus) {
-    if (std::isnan(mod_d_) || std::isnan(mod_q_)) {
-        return Motor::ERROR_CONTROLLER_INITIALIZING;
-    }
-
     // Inverse park transform
-    float pwm_phase = phase_ + phase_vel_ * ((float)(output_timestamp - timestamp_) / (float)TIM_1_8_CLOCK_HZ);
+    float pwm_phase = phase_ + phase_vel_ * ((float)(int32_t)(output_timestamp - ctrl_timestamp_) / (float)TIM_1_8_CLOCK_HZ);
     float c_p = our_arm_cos_f32(pwm_phase);
     float s_p = our_arm_sin_f32(pwm_phase);
-    float mod_alpha_temp = c_p * mod_d_ - s_p * mod_q_;
-    float mod_beta_temp = c_p * mod_q_ + s_p * mod_d_;
+    float mod_alpha_temp = c_p * mod_d - s_p * mod_q;
+    float mod_beta_temp = c_p * mod_q + s_p * mod_d;
 
     // Report final applied voltage in stationary frame (for sensorless estimator)
-    final_v_alpha_ = mod_to_V_ * mod_alpha_temp;
-    final_v_beta_ = mod_to_V_ * mod_beta_temp;
+    final_v_alpha_ = mod_to_V * mod_alpha_temp;
+    final_v_beta_ = mod_to_V * mod_beta_temp;
 
     *mod_alpha = mod_alpha_temp;
     *mod_beta = mod_beta_temp;
-    *ibus = ibus_;
+    *ibus = mod_d * Id + mod_q * Iq;
     return Motor::ERROR_NONE;
 }
 
 void FieldOrientedController::update(uint32_t timestamp) {
     CRITICAL_SECTION() {
-        timestamp_ = timestamp;
+        ctrl_timestamp_ = timestamp;
         enable_current_control_ = enable_current_control_src_;
         Id_setpoint_ = Id_setpoint_src_ ? *Id_setpoint_src_ : NAN;
         Iq_setpoint_ = Iq_setpoint_src_ ? *Iq_setpoint_src_ : NAN;
