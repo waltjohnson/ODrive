@@ -302,19 +302,15 @@ bool Axis::start_closed_loop_control() {
 
         // To avoid any transient on startup, we intialize the setpoint to be the current position
         // note - input_pos_ is not set here. It is set to 0 earlier in this method and velocity control is used.
-        if (controller_.config_.circular_setpoints) {
-            if (!controller_.pos_estimate_circular_src_) {
+        if (controller_.config_.control_mode >= Controller::CONTROL_MODE_POSITION_CONTROL) {
+            float* pos_init_src = controller_.config_.circular_setpoints ?
+                                    controller_.pos_estimate_circular_src_ :
+                                    controller_.pos_estimate_linear_src_;
+            if (!pos_init_src) {
                 return false;
             } else {
-                controller_.pos_setpoint_ = *controller_.pos_estimate_circular_src_;
-                controller_.input_pos_ = *controller_.pos_estimate_circular_src_;
-            }
-        } else {
-            if (!controller_.pos_estimate_linear_src_) {
-                return false;
-            } else {
-                controller_.pos_setpoint_ = *controller_.pos_estimate_linear_src_;
-                controller_.input_pos_ = *controller_.pos_estimate_linear_src_;
+                controller_.pos_setpoint_ = *pos_init_src;
+                controller_.input_pos_ = *pos_init_src;
             }
         }
         controller_.input_pos_updated();
@@ -323,6 +319,7 @@ bool Axis::start_closed_loop_control() {
         controller_.vel_integrator_torque_ = 0.0f;
 
         motor_.torque_setpoint_src_ = &controller_.torque_output_;
+        motor_.direction_ = sensorless_mode ? 1.0f : encoder_.config_.direction;
 
         motor_.current_control_.enable_current_control_src_ = motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL;
         motor_.current_control_.Id_setpoint_src_ = &motor_.Id_setpoint_;
@@ -335,7 +332,7 @@ bool Axis::start_closed_loop_control() {
         motor_.phase_vel_src_ =
         motor_.current_control_.phase_vel_src_ =
         async_estimator_.rotor_phase_vel_src_ =
-           sensorless_mode ? &sensorless_estimator_.vel_estimate_ : &encoder_.phase_vel_;
+           sensorless_mode ? &sensorless_estimator_.phase_vel_ : &encoder_.phase_vel_;
     }
     wait_for_control_iteration();
 
@@ -344,7 +341,8 @@ bool Axis::start_closed_loop_control() {
     if (sensorless_mode) {
         // call to controller.reset() that happend when arming means that vel_setpoint
         // is zeroed. So we make the setpoint the spinup target for smooth transition.
-        controller_.vel_setpoint_ = config_.sensorless_ramp.vel;
+        controller_.input_vel_ = config_.sensorless_ramp.vel / (2 * M_PI);
+        controller_.vel_setpoint_ = config_.sensorless_ramp.vel / (2 * M_PI);
     }
 
     return true;
@@ -472,8 +470,6 @@ void Axis::run_state_machine_loop() {
                     task_chain_[pos++] = AXIS_STATE_HOMING;
                 if (config_.startup_closed_loop_control)
                     task_chain_[pos++] = AXIS_STATE_CLOSED_LOOP_CONTROL;
-                else if (config_.startup_sensorless_control)
-                    task_chain_[pos++] = AXIS_STATE_SENSORLESS_CONTROL;
                 task_chain_[pos++] = AXIS_STATE_IDLE;
             } else if (requested_state_ == AXIS_STATE_FULL_CALIBRATION_SEQUENCE) {
                 task_chain_[pos++] = AXIS_STATE_MOTOR_CALIBRATION;
@@ -532,7 +528,7 @@ void Axis::run_state_machine_loop() {
             } break;
 
             case AXIS_STATE_CLOSED_LOOP_CONTROL: {
-                if (!motor_.is_calibrated_ || encoder_.config_.direction==0)
+                if (!motor_.is_calibrated_ || (encoder_.config_.direction==0 && !config_.enable_sensorless_mode))
                     goto invalid_state_label;
                 watchdog_feed();
                 status = run_closed_loop_control_loop();

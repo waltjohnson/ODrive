@@ -479,7 +479,7 @@ void Motor::update() {
         iq = torque / axis_->motor_.config_.torque_constant;
     }
 
-    iq *= axis_->encoder_.config_.direction;
+    iq *= direction_;
 
     // TODO: 2-norm vs independent clamping (current could be sqrt(2) bigger)
     float ilim = axis_->motor_.effective_current_lim_;

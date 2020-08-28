@@ -128,6 +128,7 @@ public:
 
     float* torque_setpoint_src_ = nullptr; // Usually points to the Controller object's output
     float* phase_vel_src_ = nullptr; // Usually points to the Encoder object's output
+    float direction_ = 0.0f; // if -1 then positive torque is converted to negative Iq
     float Vd_setpoint_ = NAN; // fed to the FOC
     float Vq_setpoint_ = NAN; // fed to the FOC
     float Id_setpoint_ = 0.0f; // fed to the FOC

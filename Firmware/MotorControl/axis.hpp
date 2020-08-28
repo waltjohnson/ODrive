@@ -56,7 +56,6 @@ public:
                                                 // this only has an effect if encoder.config.use_index is also true
         bool startup_encoder_offset_calibration = false; //<! run encoder offset calibration after startup, skip otherwise
         bool startup_closed_loop_control = false; //<! enable closed loop control after calibration/startup
-        bool startup_sensorless_control = false; //<! enable sensorless control after calibration/startup
         bool startup_homing = false; //<! enable homing after calibration/startup
 
         bool enable_step_dir = false; //<! enable step/dir input after calibration

@@ -392,9 +392,6 @@ interfaces:
           startup_closed_loop_control:
             type: bool
             doc: enable closed loop control after calibration/startup
-          startup_sensorless_control:
-            type: bool
-            doc: enable sensorless control after calibration/startup
           startup_homing:
             type: bool
             doc: enable homing after calibration/startup
@@ -963,9 +960,10 @@ interfaces:
         nullflag: None
         flags:
           UnstableGain:
-      phase: float32
-      pll_pos: float32
-      vel_estimate: float32
+      phase: {type: float32, unit: rad}
+      pll_pos: {type: float32, unit: rad}
+      phase_vel: {type: float32, unit: rad/s}
+      vel_estimate: {type: float32, unit: turns/s}
       # pll_kp: float32
       # pll_ki: float32
       config:
@@ -1056,14 +1054,15 @@ valuetypes:
            don't have to run the motor calibration on the next start up.
            * This modifies the variables `motor.config.phase_resistance` and
            `motor.config.phase_inductance`.
-      SensorlessControl:
-        brief: Run sensorless control.
-        doc: |
-           * The motor must be calibrated (`motor.is_calibrated`)
-           * `controller.config.control_mode` must be `True`.
+      #SensorlessControl:
+      #  brief: Run sensorless control.
+      #  doc: |
+      #     * The motor must be calibrated (`motor.is_calibrated`)
+      #     * `controller.config.control_mode` must be `True`.
       EncoderIndexSearch:
         brief: Turn the motor in one direction until the encoder index is traversed.
         doc: This state can only be entered if `encoder.config.use_index` is `True`.
+        value: 6
       EncoderOffsetCalibration:
         brief: Turn the motor in one direction for a few seconds and then back to measure the offset between the encoder position and the electrical phase.
         doc: |
